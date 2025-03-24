@@ -1,6 +1,7 @@
 const express = require("express");
 const axios = require("axios");
 const session = require("express-session");
+const MongoStore = require("connect-mongo");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -10,19 +11,22 @@ const PORT = 3000;
 // Middleware
 app.use(
   cors({
-    origin: "http://localhost:5173", // React frontend URL
-    credentials: true, // Allow cookies to be sent
+    origin: "http://localhost:5173",
+    credentials: true, 
   })
 );
 app.use(express.json());
 
-// Session Middleware
 app.use(
   session({
     secret: "super-secret-key",
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false }, // Change to true if using HTTPS
+    saveUninitialized: false,
+    store: MongoStore.create({
+      mongoUrl: process.env.MONGO_URI, 
+      collectionName: "session",
+    }),
+    cookie: { secure: false },
   })
 );
 
@@ -36,39 +40,47 @@ app.get("/api/random-word", async (req, res) => {
       req.session.word = response.data[0];
       req.session.partialWord = Array(req.session.word.length).fill("_");
       req.session.inCorrectGuess = [];
+      await req.session.save();
+
       return res.json({
         message: "Game started",
         sessionSet: true,
         partialWord: req.session.partialWord,
         inCorrectGuess: req.session.inCorrectGuess,
-        actualWord: req.session.word
+        actualWord: req.session.word,
       });
     } catch (error) {
       console.error("Error fetching word:", error);
       return res.status(500).json({ error: "Internal Server Error" });
     }
   }
+
   res.json({
     message: "Game resumed!",
     partialWord: req.session.partialWord,
     inCorrectGuess: req.session.inCorrectGuess,
-    actualWord: req.session.word
+    actualWord: req.session.word,
   });
 });
 
-app.post("/api/guess-word", async (req, res) => {
+app.post("/api/guess-word", (req, res) => {
   const { word, partialWord, inCorrectGuess } = req.session;
   const { key } = req.body;
   let isFound = false;
-  word.split("").map((char, index) => {
+
+  word.split("").forEach((char, index) => {
     if (key === char) {
       partialWord[index] = key;
       isFound = true;
     }
   });
+
   if (!isFound) {
     inCorrectGuess.push(key);
   }
+
+  req.session.save();
+
   res.json({ partialWord, inCorrectGuess, found: isFound });
 });
 
