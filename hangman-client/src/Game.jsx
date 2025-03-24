@@ -1,15 +1,18 @@
 import React from "react";
 import { alphabets } from "./utils";
-import { twJoin } from "tailwind-merge";
-import { useNavigate } from "react-router";
 import HangmanDraw from "./components/HangmanDraw";
+import GuessWord from "./components/GuessWord";
+import GuessButton from "./components/GuessButton";
+import Spinner from "./components/Spinner";
 
 const Game = () => {
   const [word, setWord] = React.useState([]);
   const [inCorrectGuesses, setIncorrectGuess] = React.useState([]);
   const [actualWord, setActualWord] = React.useState("");
   const [isLoading, setLoading] = React.useState(false);
-  const navigate = useNavigate();
+  const [isSearching, setIsSearching] = React.useState(false);
+
+  const playerName = localStorage.getItem("playerName") || "Player";
 
   const getWord = async (controller) => {
     const response = await fetch("http://localhost:3000/api/random-word", {
@@ -23,6 +26,9 @@ const Game = () => {
   };
 
   const searchWord = async (key) => {
+    if (isSearching) return;
+
+    setIsSearching(true);
     try {
       const response = await fetch("http://localhost:3000/api/guess-word", {
         method: "POST",
@@ -35,6 +41,8 @@ const Game = () => {
       setWord(data.partialWord);
     } catch (error) {
       console.log(error);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -43,7 +51,7 @@ const Game = () => {
     const response = await fetch("http://localhost:3000/api/reset", {
       credentials: "include",
     });
-
+    localStorage.removeItem("playerName");
     if (response.redirected) {
       window.location.href = "/";
       setLoading(false);
@@ -56,76 +64,73 @@ const Game = () => {
     return () => controller.abort();
   }, []);
 
+  const isGameOver = inCorrectGuesses.length > 5;
+  const isGameWon = word.every((char) => char !== "_");
+
   if (word.length === 0) {
-    return (
-      <div className="w-10 h-10 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
-    );
+    return <Spinner />;
   }
 
   return (
     <div className="grid grid-cols-2">
-      <HangmanDraw inCorrectGuess={inCorrectGuesses.length} />
-      <div>
-        <div className="flex gap-3 flex-wrap">
+      <div className="text-center">
+        <h2 className="text-xl font-bold mb-4">Welcome, {playerName}!</h2>
+        <HangmanDraw inCorrectGuess={inCorrectGuesses.length} />
+      </div>
+      <div className="mx-auto">
+        <div className="flex gap-3 flex-wrap justify-center">
           {word.map((char, index) => {
-            return (
-              <input
-                type="text"
-                maxLength="1"
-                className="otp-input w-12 h-12 text-center border-2 border-gray-300 rounded-md focus:outline-none focus:border-blue-500 bg-yellow-100"
-                defaultValue={char === "_" ? "" : char}
-                disabled
-                key={char + index}
-              />
-            );
+            return <GuessWord char={char} index={index} />;
           })}
         </div>
-        <div className="mt-4 grid grid-flow-row auto-rows-max grid-cols-5 gap-2">
+        <div className="mt-4 grid grid-flow-row auto-rows-max grid-cols-5 gap-2 w-[300px]">
           {alphabets.map((alphabet) => (
-            <button
-              className={twJoin(
-                "cursor-pointer w-12 h-12 text-center border-2 border-gray-300 rounded-md disabled:cursor-none",
-                word.includes(alphabet)
-                  ? "disabled:border-lime-300 bg-transparent"
-                  : "",
-                inCorrectGuesses.includes(alphabet)
-                  ? "disabled:border-red-300 bg-transparent"
-                  : "",
-                !word.includes(alphabet) && !inCorrectGuesses.includes(alphabet)
-                  ? "hover:bg-zinc-300"
-                  : ""
-              )}
-              key={alphabet}
-              onClick={() => searchWord(alphabet)}
-              disabled={
-                word.includes(alphabet) || inCorrectGuesses.includes(alphabet)
-              }
-            >
-              {alphabet}
-            </button>
+            <GuessButton
+              alphabet={alphabet}
+              word={word}
+              inCorrectGuesses={inCorrectGuesses}
+              searchWord={searchWord}
+              isSearching={isSearching}
+            />
           ))}
         </div>
+        <div className="mt-4 flex justify-center">
+          <button
+            className="text-md bg-red-500 text-white px-4 py-2 mt-4 cursor-pointer rounded-lg shadow-md 
+             hover:bg-red-700 active:scale-95 transition-all duration-200 ease-in-out 
+             disabled:bg-gray-400 disabled:cursor-not-allowed"
+            onClick={() => quitGame()}
+          >
+            Quit Game
+          </button>
+        </div>
 
-        {(inCorrectGuesses.length > 5 ||
-          (word.length !== 0 && word.every((char) => char !== "_"))) && (
+        {(isGameOver || isGameWon) && (
           <div className="bg-white absolute inset-0 flex items-center justify-center">
             <div>
-              {word.every((char) => char !== "_") ? (
-                <h2>Hurray! you won. Guess Word: {word.join("")}</h2>
+              {isGameWon ? (
+                <h2 className="text-lg">
+                  Hurray, <b>{playerName}</b>! You won. Guess Word:{" "}
+                  {word.join("")}
+                </h2>
               ) : (
-                <div>
-                  Game Over! Correct Answer: <b>{actualWord}</b>
-                </div>
+                <h2 className="text-lg">
+                  Sorry, <b>{playerName}</b>! Game Over. Correct Answer:{" "}
+                  <b>{actualWord}</b>
+                </h2>
               )}
               {!isLoading ? (
                 <button
-                  className="text-md bg-slate-200 text-sm p-2 mt-2 cursor-pointer rounded"
+                  className="text-md bg-slate-500 text-white px-4 py-2 mt-2 cursor-pointer rounded-lg shadow-md 
+                           hover:bg-slate-700 active:scale-95 transition-all duration-200 ease-in-out 
+                           disabled:bg-gray-400 disabled:cursor-not-allowed text-center"
                   onClick={() => quitGame()}
+                  disabled={isLoading} // Prevent clicks while loading
                 >
-                  Play Again
+                  {isLoading ? "Restarting..." : "Play Again"}
                 </button>
               ) : (
-                <div className="w-10 h-10 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                <Spinner />
               )}
             </div>
           </div>
